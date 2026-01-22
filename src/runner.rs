@@ -69,6 +69,7 @@ pub struct RunnerConfig {
     pub root: std::path::PathBuf,
     pub pkg_concurrency: usize,
     pub go_test_p: usize,
+    pub no_test_cache: bool,
 }
 
 #[derive(Error, Debug)]
@@ -129,9 +130,10 @@ fn run_spec(run_id: u64, config: &RunnerConfig, spec: &RunSpec, event_tx: &Sende
         let event_tx = event_tx.clone();
         let root = config.root.clone();
         let go_test_p = config.go_test_p;
+        let no_test_cache = config.no_test_cache;
         handles.push(std::thread::spawn(move || {
             while let Ok(job) = job_rx.recv() {
-                run_package(run_id, &root, go_test_p, job, &event_tx);
+                run_package(run_id, &root, go_test_p, no_test_cache, job, &event_tx);
             }
         }));
     }
@@ -155,6 +157,7 @@ fn run_package(
     run_id: u64,
     root: &std::path::Path,
     go_test_p: usize,
+    no_test_cache: bool,
     job: PackageRun,
     event_tx: &Sender<RunnerEvent>,
 ) {
@@ -174,8 +177,11 @@ fn run_package(
     let mut cmd = Command::new("go");
     cmd.arg("test")
         .arg("-json")
-        .arg("-count=1")
         .arg(format!("-p={}", go_test_p));
+
+    if no_test_cache {
+        cmd.arg("-count=1");
+    }
 
     if let Some(tests) = &job.tests {
         if !tests.is_empty() {

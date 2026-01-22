@@ -40,6 +40,7 @@ gest
 - `--pkg-concurrency <n>`: max parallel packages (default: CPU count)
 - `--sequential`: set `--pkg-concurrency=1` and `go test -p=1`
 - `--no-watch`: disable file watching
+- `--no-test-cache`: disable Go test cache (`-count=1`)
 - `--packages <regex>`: filter packages by import path
 - `--debug`: enable debug logging (reserved)
 
@@ -74,7 +75,8 @@ Select mode:
 
 ## Notes
 
-- Tests run with `go test -json -count=1` (Go cache disabled).
+- Tests run with `go test -json` and use the Go cache by default.
+- Use `--no-test-cache` to add `-count=1` and disable caching.
 - Package-level harness output (`PASS`, `FAIL`, `ok ...`) is ignored.
 - Panic output is attached to the test that emitted it.
 

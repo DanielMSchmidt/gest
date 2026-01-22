@@ -12,6 +12,8 @@ pub struct Cli {
     #[arg(long)]
     pub no_watch: bool,
     #[arg(long)]
+    pub no_test_cache: bool,
+    #[arg(long)]
     pub packages: Option<String>,
     #[arg(long)]
     pub debug: bool,
