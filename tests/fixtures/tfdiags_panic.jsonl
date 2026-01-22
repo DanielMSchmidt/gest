@@ -1,0 +1,8 @@
+{"Time":"2026-01-22T16:46:14.877898+01:00","Action":"run","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticsToHCL"}
+{"Time":"2026-01-22T16:46:14.877901+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticsToHCL","Output":"=== RUN   TestDiagnosticsToHCL\n"}
+{"Time":"2026-01-22T16:46:14.877905+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticsToHCL","Output":"--- FAIL: TestDiagnosticsToHCL (0.00s)\n"}
+{"Time":"2026-01-22T16:46:14.880386+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticsToHCL","Output":"panic: this went wrong [recovered, repanicked]\n"}
+{"Time":"2026-01-22T16:46:14.881488+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticsToHCL","Output":"github.com/hashicorp/terraform/internal/tfdiags.TestDiagnosticsToHCL(0x14000270540?)\n"}
+{"Time":"2026-01-22T16:46:14.882043+01:00","Action":"fail","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticsToHCL","Elapsed":0}
+{"Time":"2026-01-22T16:46:14.882057+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Output":"FAIL\tgithub.com/hashicorp/terraform/internal/tfdiags\t0.484s\n"}
+{"Time":"2026-01-22T16:46:14.882066+01:00","Action":"fail","Package":"github.com/hashicorp/terraform/internal/tfdiags","Elapsed":0.484}

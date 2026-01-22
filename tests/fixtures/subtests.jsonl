@@ -1,0 +1,4 @@
+{"Action":"run","Package":"example","Test":"TestFoo"}
+{"Action":"run","Package":"example","Test":"TestFoo/Sub"}
+{"Action":"output","Package":"example","Test":"TestFoo/Sub","Output":"panic: boom\n"}
+{"Action":"fail","Package":"example","Test":"TestFoo/Sub"}

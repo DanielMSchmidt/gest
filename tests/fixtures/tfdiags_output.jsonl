@@ -1,0 +1,7 @@
+{"Time":"2026-01-22T16:40:32.946423+01:00","Action":"start","Package":"github.com/hashicorp/terraform/internal/tfdiags"}
+{"Time":"2026-01-22T16:40:33.434426+01:00","Action":"run","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticComparer"}
+{"Time":"2026-01-22T16:40:33.434565+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticComparer","Output":"=== RUN   TestDiagnosticComparer\n"}
+{"Time":"2026-01-22T16:40:33.434898+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticComparer/reports_that_diagnostics_don't_match_if_the_concrete_type_differs","Output":"--- PASS: TestDiagnosticComparer/reports_that_diagnostics_don't_match_if_the_concrete_type_differs (0.00s)\n"}
+{"Time":"2026-01-22T16:40:33.435839+01:00","Action":"pass","Package":"github.com/hashicorp/terraform/internal/tfdiags","Test":"TestDiagnosticComparer/reports_that_identical_diagnostics_match","Elapsed":0}
+{"Time":"2026-01-22T16:40:33.442936+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Output":"PASS\n"}
+{"Time":"2026-01-22T16:40:33.443801+01:00","Action":"output","Package":"github.com/hashicorp/terraform/internal/tfdiags","Output":"ok  \tgithub.com/hashicorp/terraform/internal/tfdiags\t0.497s\n"}
