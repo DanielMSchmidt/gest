@@ -192,6 +192,7 @@ impl App {
                             packages: packages.into_iter().collect(),
                             tests: None,
                         }],
+                        no_test_cache_override: None,
                     };
                     let _ = runner_tx.send(RunnerCommand::Run(spec));
                 }
@@ -236,19 +237,20 @@ impl App {
                 packages,
                 tests: None,
             }],
+            no_test_cache_override: None,
         };
         let _ = runner_tx.send(RunnerCommand::Run(spec));
     }
 
     pub fn run_failing(&self, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
-        let spec = self.spec_for_tests(RunKind::Failing, &self.failing_set);
+        let spec = self.spec_for_tests(RunKind::Failing, &self.failing_set, None);
         if let Some(spec) = spec {
             let _ = runner_tx.send(RunnerCommand::Run(spec));
         }
     }
 
     pub fn run_selected(&self, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
-        let spec = self.spec_for_tests(RunKind::Selected, &self.selected_set);
+        let spec = self.spec_for_tests(RunKind::Selected, &self.selected_set, None);
         if let Some(spec) = spec {
             let _ = runner_tx.send(RunnerCommand::Run(spec));
         }
@@ -293,13 +295,16 @@ impl App {
             KeyCode::Enter => self.detail_open = !self.detail_open,
             KeyCode::Right => self.detail_open = true,
             KeyCode::Left => self.detail_open = false,
-            KeyCode::Char('r') => {
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                let no_test_cache = key.modifiers.contains(KeyModifiers::SHIFT)
+                    || matches!(key.code, KeyCode::Char('R'));
                 if let Some(test) = self.current_test() {
                     self.detail_open = false;
                     self.mark_running(&test);
                     let mut tests = HashSet::new();
                     tests.insert(test);
-                    let spec = self.spec_for_tests(RunKind::Single, &tests);
+                    let override_flag = if no_test_cache { Some(true) } else { None };
+                    let spec = self.spec_for_tests(RunKind::Single, &tests, override_flag);
                     if let Some(spec) = spec {
                         let _ = runner_tx.send(RunnerCommand::Run(spec));
                     }
@@ -449,7 +454,12 @@ impl App {
         }
     }
 
-    fn spec_for_tests(&self, kind: RunKind, tests: &HashSet<TestId>) -> Option<RunSpec> {
+    fn spec_for_tests(
+        &self,
+        kind: RunKind,
+        tests: &HashSet<TestId>,
+        no_test_cache_override: Option<bool>,
+    ) -> Option<RunSpec> {
         if tests.is_empty() {
             return None;
         }
@@ -469,6 +479,7 @@ impl App {
                     tests: Some(tests),
                 })
                 .collect(),
+            no_test_cache_override,
         })
     }
 
@@ -610,7 +621,9 @@ mod tests {
             package: "example".to_string(),
             name: "TestBar".to_string(),
         });
-        let spec = app.spec_for_tests(RunKind::Selected, &tests).unwrap();
+        let spec = app
+            .spec_for_tests(RunKind::Selected, &tests, None)
+            .unwrap();
         assert_eq!(spec.packages.len(), 1);
         assert_eq!(spec.packages[0].tests.as_ref().unwrap().len(), 2);
         assert_eq!(spec.packages[0].packages.len(), 1);

@@ -59,11 +59,11 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
     let (line2, line3) = match app.mode {
         RunMode::All => (
-            "keys: a all, o failing, p select, r rerun",
+            "keys: a all, o failing, p select, r rerun, R no-cache",
             "keys: enter toggle output, left close, right open, up/down move, q or ctrl+c quit",
         ),
         RunMode::Failing | RunMode::Selected => (
-            "keys: a all, o failing, p select, r rerun, x remove",
+            "keys: a all, o failing, p select, r rerun, R no-cache, x remove",
             "keys: enter toggle output, left close, right open, up/down move, q or ctrl+c quit",
         ),
         RunMode::Selecting => (

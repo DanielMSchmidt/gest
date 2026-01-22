@@ -52,6 +52,7 @@ General list view:
 - `o`: only failing mode
 - `p`: select mode
 - `r`: rerun selected test
+- `R`: rerun selected test without cache
 - `x`: remove selected test from failing/selected list
 - `Enter`: toggle output pane
 - `→`: open output pane

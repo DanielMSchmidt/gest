@@ -26,6 +26,7 @@ pub struct PackageRun {
 pub struct RunSpec {
     pub kind: RunKind,
     pub packages: Vec<PackageRun>,
+    pub no_test_cache_override: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -107,6 +108,9 @@ fn runner_loop(rx: Receiver<RunnerCommand>, config: RunnerConfig, event_tx: Send
 }
 
 fn run_spec(run_id: u64, config: &RunnerConfig, spec: &RunSpec, event_tx: &Sender<RunnerEvent>) {
+    let no_test_cache = spec
+        .no_test_cache_override
+        .unwrap_or(config.no_test_cache);
     let _ = event_tx.send(RunnerEvent::RunStarted {
         run_id,
         kind: spec.kind,
@@ -130,10 +134,10 @@ fn run_spec(run_id: u64, config: &RunnerConfig, spec: &RunSpec, event_tx: &Sende
         let event_tx = event_tx.clone();
         let root = config.root.clone();
         let go_test_p = config.go_test_p;
-        let no_test_cache = config.no_test_cache;
+        let no_cache = no_test_cache;
         handles.push(std::thread::spawn(move || {
             while let Ok(job) = job_rx.recv() {
-                run_package(run_id, &root, go_test_p, no_test_cache, job, &event_tx);
+                run_package(run_id, &root, go_test_p, no_cache, job, &event_tx);
             }
         }));
     }
