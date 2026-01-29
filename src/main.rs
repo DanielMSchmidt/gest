@@ -8,10 +8,10 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use gest::app::{App, RunMode};
-use gest::cache::{load_cache, save_cache};
+use gest::cache::{cached_packages, load_cache, save_cache, update_package_cache};
 use gest::cli::{Cli, ModeArg};
 use gest::events::AppEvent;
-use gest::repo::{cache_file, ensure_cache_dir, find_repo_root, list_packages};
+use gest::repo::{cache_file, ensure_cache_dir, filter_packages, find_repo_root, list_packages};
 use gest::runner::{start_runner, RunnerCommand, RunnerConfig};
 use gest::watcher::start_watcher;
 use gest::ui;
@@ -23,13 +23,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("No go.mod found in this directory or parents")?;
     ensure_cache_dir(&repo_root)?;
     let cache_path = cache_file(&repo_root);
-    let cache = load_cache(&cache_path).unwrap_or_default();
+    let mut cache = load_cache(&cache_path).unwrap_or_default();
     let package_filter = cli
         .packages
         .as_ref()
         .map(|pattern| regex::Regex::new(pattern))
         .transpose()?;
-    let packages = list_packages(&repo_root, package_filter.as_ref())?;
+    let cached = cached_packages(&repo_root, &cache);
+    let all_packages = if let Some(packages) = cached {
+        packages
+    } else {
+        let packages = list_packages(&repo_root)?;
+        let _ = update_package_cache(&repo_root, &mut cache, &packages);
+        packages
+    };
+    let packages = filter_packages(&all_packages, package_filter.as_ref());
 
     let mut pkg_concurrency = cli.pkg_concurrency.max(1);
     let mut go_test_p = pkg_concurrency;
@@ -44,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ModeArg::Select => RunMode::Selecting,
     };
 
+    let package_cache = cache.package_cache.clone();
     let mut app = App::new(
         repo_root.clone(),
         packages,
@@ -146,7 +155,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
-    let _ = save_cache(&cache_path, &app.cache_state());
+    let mut final_cache = app.cache_state();
+    final_cache.package_cache = package_cache;
+    let _ = save_cache(&cache_path, &final_cache);
     Ok(())
 }
 

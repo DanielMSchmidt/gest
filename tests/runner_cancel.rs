@@ -30,12 +30,12 @@ fn long_running_command() -> Vec<String> {
             "ping".to_string(),
             "127.0.0.1".to_string(),
             "-n".to_string(),
-            "6".to_string(),
+            "3".to_string(),
         ]
     }
     #[cfg(not(windows))]
     {
-        vec!["sleep".to_string(), "5".to_string()]
+        vec!["sleep".to_string(), "2".to_string()]
     }
 }
 
@@ -65,7 +65,7 @@ fn cancel_unblocks_runner_and_updates_app_state() {
     };
     let _ = runner_tx.send(RunnerCommand::Run(spec));
 
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + Duration::from_secs(2);
     let mut saw_run_error = false;
     let mut saw_run_finished = false;
     while Instant::now() < deadline {
