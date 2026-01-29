@@ -525,7 +525,7 @@ impl App {
     }
 
     fn is_current_run(&self, run_id: u64) -> bool {
-        self.run_state.run_id.map_or(true, |current| current == run_id)
+        self.run_state.run_id.is_none_or(|current| current == run_id)
     }
 
     fn mark_running(&mut self, id: &TestId) {
