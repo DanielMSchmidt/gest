@@ -362,6 +362,11 @@ fn run_package(context: &PackageContext, job: PackageRun) {
         let mut guard = context.active_run.children.lock().unwrap();
         guard.push(child_handle.clone());
     }
+    if context.active_run.is_cancelled() {
+        if let Ok(mut child) = child_handle.lock() {
+            let _ = child.kill();
+        }
+    }
 
     let stderr = {
         let mut guard = child_handle.lock().unwrap();
@@ -382,17 +387,19 @@ fn run_package(context: &PackageContext, job: PackageRun) {
     };
     if let Some(stdout) = stdout {
         let reader = BufReader::new(stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            if context.active_run.is_cancelled() {
-                break;
-            }
-            if let Some(mut event) = parse_go_test_line(&line) {
-                if event.package.is_empty() {
-                    event.package = package_label.clone();
+        if !context.active_run.is_cancelled() {
+            for line in reader.lines().map_while(Result::ok) {
+                if context.active_run.is_cancelled() {
+                    break;
                 }
-                let _ = context
-                    .event_tx
-                    .send(RunnerEvent::TestEvent { run_id: context.run_id, event });
+                if let Some(mut event) = parse_go_test_line(&line) {
+                    if event.package.is_empty() {
+                        event.package = package_label.clone();
+                    }
+                    let _ = context
+                        .event_tx
+                        .send(RunnerEvent::TestEvent { run_id: context.run_id, event });
+                }
             }
         }
     }
