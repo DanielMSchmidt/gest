@@ -21,6 +21,24 @@ fn sample_app() -> App {
     )
 }
 
+fn long_running_command() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        vec![
+            "cmd".to_string(),
+            "/C".to_string(),
+            "ping".to_string(),
+            "127.0.0.1".to_string(),
+            "-n".to_string(),
+            "6".to_string(),
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        vec!["sleep".to_string(), "5".to_string()]
+    }
+}
+
 #[test]
 fn cancel_unblocks_runner_and_updates_app_state() {
     let (event_tx, event_rx) = crossbeam_channel::unbounded();
@@ -30,7 +48,7 @@ fn cancel_unblocks_runner_and_updates_app_state() {
             pkg_concurrency: 1,
             go_test_p: 1,
             no_test_cache: false,
-            test_command: Some(vec!["sleep".to_string(), "5".to_string()]),
+            test_command: Some(long_running_command()),
         },
         event_tx,
     );
