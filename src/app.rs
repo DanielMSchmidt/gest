@@ -147,13 +147,13 @@ impl App {
                 };
             }
             RunnerEvent::PackageFinished { run_id, .. } => {
-                if self.run_state.run_id != Some(run_id) {
+                if !self.is_current_run(run_id) {
                     return;
                 }
                 self.run_state.packages_done = self.run_state.packages_done.saturating_add(1);
             }
             RunnerEvent::RunFinished { run_id, kind } => {
-                if self.run_state.run_id != Some(run_id) {
+                if !self.is_current_run(run_id) {
                     return;
                 }
                 self.run_state.running = false;
@@ -162,7 +162,7 @@ impl App {
                 }
             }
             RunnerEvent::TestEvent { run_id, event } => {
-                if self.run_state.run_id != Some(run_id) {
+                if !self.is_current_run(run_id) {
                     return;
                 }
                 self.registry.apply_event(&event);
@@ -171,13 +171,13 @@ impl App {
                 }
             }
             RunnerEvent::RunError { run_id, message } => {
-                if self.run_state.run_id != Some(run_id) {
+                if !self.is_current_run(run_id) {
                     return;
                 }
                 self.last_error = Some(message);
             }
             RunnerEvent::PackageStarted { run_id, .. } => {
-                if self.run_state.run_id != Some(run_id) {
+                if !self.is_current_run(run_id) {
                     return;
                 }
             }
@@ -548,6 +548,10 @@ impl App {
                 run_id: self.run_state.run_id,
             });
         }
+    }
+  
+    fn is_current_run(&self, run_id: u64) -> bool {
+        self.run_state.run_id.map(|current| current == run_id).unwrap_or(true)
     }
 }
 
