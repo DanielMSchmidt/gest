@@ -1,9 +1,11 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use crossterm::event::{self};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
@@ -13,14 +15,13 @@ use gest::cli::{Cli, ModeArg};
 use gest::events::AppEvent;
 use gest::repo::{cache_file, ensure_cache_dir, filter_packages, find_repo_root, list_packages};
 use gest::runner::{start_runner, RunnerCommand, RunnerConfig};
-use gest::watcher::start_watcher;
 use gest::ui;
+use gest::watcher::start_watcher;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
-    let repo_root = find_repo_root(&cwd)
-        .ok_or("No go.mod found in this directory or parents")?;
+    let repo_root = find_repo_root(&cwd).ok_or("No go.mod found in this directory or parents")?;
     ensure_cache_dir(&repo_root)?;
     let cache_path = cache_file(&repo_root);
     let mut cache = load_cache(&cache_path).unwrap_or_default();
@@ -62,8 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         !cli.no_watch,
     );
 
-    let (app_tx, app_rx) = crossbeam_channel::unbounded();
-    let shutdown_tx = app_tx.clone();
+    let (input_tx, input_rx) = crossbeam_channel::unbounded();
+    let (event_tx, event_rx) = crossbeam_channel::unbounded();
+    let shutdown_tx = input_tx.clone();
     ctrlc::set_handler(move || {
         let _ = shutdown_tx.send(AppEvent::Shutdown);
     })?;
@@ -80,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         runner_event_tx,
     );
 
-    let app_tx_clone = app_tx.clone();
+    let app_tx_clone = event_tx.clone();
     std::thread::spawn(move || {
         while let Ok(event) = runner_event_rx.recv() {
             let _ = app_tx_clone.send(AppEvent::Runner(event));
@@ -92,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(err) = start_watcher(repo_root.clone(), watch_event_tx) {
             app.last_error = Some(err.to_string());
         } else {
-            let app_tx_clone = app_tx.clone();
+            let app_tx_clone = event_tx.clone();
             std::thread::spawn(move || {
                 while let Ok(event) = watch_event_rx.recv() {
                     let _ = app_tx_clone.send(AppEvent::Watch(event));
@@ -101,8 +103,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    start_input_thread(app_tx.clone());
-    start_tick_thread(app_tx.clone());
+    start_input_thread(input_tx.clone());
+    start_tick_thread(event_tx.clone());
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -113,41 +115,95 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.run_all(&runner_tx);
 
     terminal.draw(|frame| ui::draw(frame, &app))?;
+    let mut last_draw = Instant::now();
+    let redraw_interval = Duration::from_millis(50);
 
     let mut should_exit = false;
+    let mut dirty = false;
+    let mut draw_now = false;
     while !should_exit {
-        let mut had_event = false;
-        match app_rx.recv_timeout(Duration::from_millis(50)) {
-            Ok(event) => {
-                had_event = true;
-                should_exit = handle_app_event(event, &mut app, &runner_tx);
+        let timeout = crossbeam_channel::after(Duration::from_millis(50));
+        crossbeam_channel::select_biased! {
+            recv(input_rx) -> event => {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(_) => break,
+                };
+                let outcome = handle_app_event(event, &mut app, &runner_tx);
+                should_exit = should_exit || outcome.should_exit;
+                dirty = dirty || outcome.dirty;
+                draw_now = draw_now || outcome.draw_now;
             }
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+            recv(event_rx) -> event => {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(_) => break,
+                };
+                let outcome = handle_app_event(event, &mut app, &runner_tx);
+                should_exit = should_exit || outcome.should_exit;
+                dirty = dirty || outcome.dirty;
+                draw_now = draw_now || outcome.draw_now;
+            }
+            recv(timeout) -> _ => {}
         }
 
         let mut processed = 0usize;
         let start = std::time::Instant::now();
         while processed < 500 && start.elapsed() < Duration::from_millis(10) {
-            match app_rx.try_recv() {
-                Ok(event) => {
-                    had_event = true;
+            let mut handled_event = false;
+            crossbeam_channel::select_biased! {
+                recv(input_rx) -> event => {
+                    let event = match event {
+                        Ok(event) => event,
+                        Err(_) => {
+                            should_exit = true;
+                            break;
+                        }
+                    };
                     processed += 1;
-                    should_exit = handle_app_event(event, &mut app, &runner_tx) || should_exit;
-                    if should_exit {
-                        break;
-                    }
+                    let outcome = handle_app_event(event, &mut app, &runner_tx);
+                    should_exit = should_exit || outcome.should_exit;
+                    dirty = dirty || outcome.dirty;
+                    draw_now = draw_now || outcome.draw_now;
+                    handled_event = true;
                 }
-                Err(crossbeam_channel::TryRecvError::Empty) => break,
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    should_exit = true;
-                    break;
+                recv(event_rx) -> event => {
+                    let event = match event {
+                        Ok(event) => event,
+                        Err(_) => {
+                            should_exit = true;
+                            break;
+                        }
+                    };
+                    processed += 1;
+                    let outcome = handle_app_event(event, &mut app, &runner_tx);
+                    should_exit = should_exit || outcome.should_exit;
+                    dirty = dirty || outcome.dirty;
+                    draw_now = draw_now || outcome.draw_now;
+                    handled_event = true;
                 }
+                default => {}
+            }
+            if !handled_event || should_exit {
+                break;
             }
         }
 
-        if had_event {
+        if should_exit {
+            break;
+        }
+
+        let should_draw = if draw_now {
+            true
+        } else {
+            dirty && last_draw.elapsed() >= redraw_interval
+        };
+
+        if should_draw {
             terminal.draw(|frame| ui::draw(frame, &app))?;
+            last_draw = Instant::now();
+            dirty = false;
+            draw_now = false;
         }
     }
 
@@ -178,22 +234,48 @@ fn start_tick_thread(tx: crossbeam_channel::Sender<AppEvent>) {
     });
 }
 
+struct AppEventOutcome {
+    should_exit: bool,
+    draw_now: bool,
+    dirty: bool,
+}
+
 fn handle_app_event(
     event: AppEvent,
     app: &mut App,
     runner_tx: &crossbeam_channel::Sender<RunnerCommand>,
-) -> bool {
+) -> AppEventOutcome {
     match event {
-        AppEvent::Input(event) => app.handle_input(event, runner_tx),
+        AppEvent::Input(event) => AppEventOutcome {
+            should_exit: app.handle_input(event, runner_tx),
+            draw_now: true,
+            dirty: true,
+        },
         AppEvent::Runner(event) => {
             app.handle_runner_event(event);
-            false
+            AppEventOutcome {
+                should_exit: false,
+                draw_now: false,
+                dirty: true,
+            }
         }
         AppEvent::Watch(event) => {
             app.handle_watch_event(event, runner_tx);
-            false
+            AppEventOutcome {
+                should_exit: false,
+                draw_now: false,
+                dirty: true,
+            }
         }
-        AppEvent::Tick => false,
-        AppEvent::Shutdown => true,
+        AppEvent::Tick => AppEventOutcome {
+            should_exit: false,
+            draw_now: false,
+            dirty: false,
+        },
+        AppEvent::Shutdown => AppEventOutcome {
+            should_exit: true,
+            draw_now: false,
+            dirty: false,
+        },
     }
 }
