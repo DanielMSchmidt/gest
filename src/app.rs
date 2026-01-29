@@ -146,25 +146,41 @@ impl App {
                     run_started_at: Some(Instant::now()),
                 };
             }
-            RunnerEvent::PackageFinished { .. } => {
+            RunnerEvent::PackageFinished { run_id, .. } => {
+                if !self.is_current_run(run_id) {
+                    return;
+                }
                 self.run_state.packages_done = self.run_state.packages_done.saturating_add(1);
             }
-            RunnerEvent::RunFinished { kind, .. } => {
+            RunnerEvent::RunFinished { run_id, kind } => {
+                if !self.is_current_run(run_id) {
+                    return;
+                }
                 self.run_state.running = false;
                 if kind == RunKind::All {
                     self.update_failing_set();
                 }
             }
-            RunnerEvent::TestEvent { event, .. } => {
+            RunnerEvent::TestEvent { run_id, event } => {
+                if !self.is_current_run(run_id) {
+                    return;
+                }
                 self.registry.apply_event(&event);
                 if self.mode == RunMode::Selecting {
                     self.refresh_selection_filter();
                 }
             }
-            RunnerEvent::RunError { message, .. } => {
+            RunnerEvent::RunError { run_id, message } => {
+                if !self.is_current_run(run_id) {
+                    return;
+                }
                 self.last_error = Some(message);
             }
-            RunnerEvent::PackageStarted { .. } => {}
+            RunnerEvent::PackageStarted { run_id, .. } => {
+                if !self.is_current_run(run_id) {
+                    return;
+                }
+            }
         }
         self.refresh_lists();
     }
@@ -516,6 +532,10 @@ impl App {
             case.panic = false;
             case.last_update = Some(Instant::now());
         }
+    }
+
+    fn is_current_run(&self, run_id: u64) -> bool {
+        self.run_state.run_id.map(|current| current == run_id).unwrap_or(true)
     }
 }
 
