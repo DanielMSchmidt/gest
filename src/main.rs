@@ -66,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pkg_concurrency,
             go_test_p,
             no_test_cache: cli.no_test_cache,
+            test_command: None,
         },
         runner_event_tx,
     );

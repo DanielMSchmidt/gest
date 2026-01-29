@@ -201,17 +201,19 @@ impl App {
                             packages.insert(package.import_path.clone());
                         }
                     }
-                if !packages.is_empty() {
-                    let spec = RunSpec {
-                        kind: RunKind::All,
-                        packages: vec![PackageRun {
-                            packages: packages.into_iter().collect(),
-                            tests: None,
-                        }],
-                        no_test_cache_override: None,
-                    };
-                    let _ = runner_tx.send(RunnerCommand::Run(spec));
-                }
+                    if !packages.is_empty() {
+                        self.cancel_current_run(runner_tx);
+                        let spec = RunSpec {
+                            kind: RunKind::All,
+                            packages: vec![PackageRun {
+                                packages: packages.into_iter().collect(),
+                                tests: None,
+                            }],
+                            no_test_cache_override: None,
+                            timeout: None,
+                        };
+                        let _ = runner_tx.send(RunnerCommand::Run(spec));
+                    }
                 } else if self.mode == RunMode::Failing {
                     self.run_failing(runner_tx);
                 } else if self.mode == RunMode::Selected || self.mode == RunMode::Selecting {
@@ -236,6 +238,7 @@ impl App {
     }
 
     pub fn run_all(&mut self, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
+        self.cancel_current_run(runner_tx);
         let packages: Vec<String> = if self.package_filter_active {
             self.packages
                 .iter()
@@ -254,11 +257,13 @@ impl App {
                 tests: None,
             }],
             no_test_cache_override: None,
+            timeout: None,
         };
         let _ = runner_tx.send(RunnerCommand::Run(spec));
     }
 
     pub fn run_failing(&self, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
+        self.cancel_current_run(runner_tx);
         let spec = self.spec_for_tests(RunKind::Failing, &self.failing_set, None);
         if let Some(spec) = spec {
             let _ = runner_tx.send(RunnerCommand::Run(spec));
@@ -266,6 +271,7 @@ impl App {
     }
 
     pub fn run_selected(&self, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
+        self.cancel_current_run(runner_tx);
         let spec = self.spec_for_tests(RunKind::Selected, &self.selected_set, None);
         if let Some(spec) = spec {
             let _ = runner_tx.send(RunnerCommand::Run(spec));
@@ -322,6 +328,7 @@ impl App {
                     let override_flag = if no_test_cache { Some(true) } else { None };
                     let spec = self.spec_for_tests(RunKind::Single, &tests, override_flag);
                     if let Some(spec) = spec {
+                        self.cancel_current_run(runner_tx);
                         let _ = runner_tx.send(RunnerCommand::Run(spec));
                     }
                 }
@@ -496,6 +503,7 @@ impl App {
                 })
                 .collect(),
             no_test_cache_override,
+            timeout: None,
         })
     }
 
@@ -534,6 +542,14 @@ impl App {
         }
     }
 
+    fn cancel_current_run(&self, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
+        if self.run_state.running {
+            let _ = runner_tx.send(RunnerCommand::Cancel {
+                run_id: self.run_state.run_id,
+            });
+        }
+    }
+  
     fn is_current_run(&self, run_id: u64) -> bool {
         self.run_state.run_id.map(|current| current == run_id).unwrap_or(true)
     }
