@@ -189,6 +189,35 @@ impl TestRegistry {
             .collect()
     }
 
+    pub fn finalize_package_tests(
+        &mut self,
+        package: &str,
+        status: TestStatus,
+        since: Option<Instant>,
+    ) {
+        if !matches!(status, TestStatus::Passed | TestStatus::Failed) {
+            return;
+        }
+        let now = Instant::now();
+        for (id, case) in self.tests.iter_mut() {
+            if id.package != package {
+                continue;
+            }
+            if case.status != TestStatus::Running {
+                continue;
+            }
+            if let Some(start) = since {
+                if case.last_update.map(|ts| ts >= start).unwrap_or(false) {
+                    case.status = status;
+                    case.last_update = Some(now);
+                }
+            } else {
+                case.status = status;
+                case.last_update = Some(now);
+            }
+        }
+    }
+
     pub fn order_index(&self, id: &TestId) -> usize {
         self.order_index.get(id).cloned().unwrap_or(usize::MAX)
     }
@@ -399,5 +428,25 @@ mod tests {
         };
         let case = registry.case(&id).unwrap();
         assert!(!case.output.contains("PASS"));
+    }
+
+    #[test]
+    fn finalizes_running_tests_on_package_completion() {
+        let mut registry = TestRegistry::default();
+        let start = Instant::now();
+        let id = TestId {
+            package: "example".to_string(),
+            name: "TestFoo".to_string(),
+        };
+        registry.ensure_test(&id);
+        if let Some(case) = registry.case_mut(&id) {
+            case.status = TestStatus::Running;
+            case.last_update = Some(start);
+        }
+
+        registry.finalize_package_tests("example", TestStatus::Passed, Some(start));
+
+        let case = registry.case(&id).unwrap();
+        assert_eq!(case.status, TestStatus::Passed);
     }
 }
