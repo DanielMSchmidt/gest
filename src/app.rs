@@ -132,61 +132,84 @@ impl App {
     }
 
     pub fn handle_runner_event(&mut self, event: RunnerEvent) {
-        match event {
-            RunnerEvent::RunStarted {
-                run_id,
-                kind,
-                packages,
-            } => {
-                self.run_state = RunState {
-                    run_id: Some(run_id),
-                    kind: Some(kind),
-                    packages_total: packages,
-                    packages_done: 0,
-                    running: true,
-                    run_started_at: Some(Instant::now()),
-                };
+        self.handle_runner_events(std::iter::once(event));
+    }
+
+    pub fn handle_runner_events<I>(&mut self, events: I)
+    where
+        I: IntoIterator<Item = RunnerEvent>,
+    {
+        let mut refresh_selection = false;
+        let mut refresh_failing = false;
+
+        for event in events {
+            match event {
+                RunnerEvent::RunStarted {
+                    run_id,
+                    kind,
+                    packages,
+                } => {
+                    self.run_state = RunState {
+                        run_id: Some(run_id),
+                        kind: Some(kind),
+                        packages_total: packages,
+                        packages_done: 0,
+                        running: true,
+                        run_started_at: Some(Instant::now()),
+                    };
+                }
+                RunnerEvent::PackageFinished { run_id, .. } => {
+                    if !self.is_current_run(run_id) {
+                        continue;
+                    }
+                    self.run_state.packages_done = self.run_state.packages_done.saturating_add(1);
+                }
+                RunnerEvent::RunFinished { run_id, kind } => {
+                    if !self.is_current_run(run_id) {
+                        continue;
+                    }
+                    self.run_state.running = false;
+                    if kind == RunKind::All {
+                        refresh_failing = true;
+                    }
+                }
+                RunnerEvent::TestEvent { run_id, event } => {
+                    if !self.is_current_run(run_id) {
+                        continue;
+                    }
+                    self.registry.apply_event(&event);
+                    if self.mode == RunMode::Selecting {
+                        refresh_selection = true;
+                    }
+                }
+                RunnerEvent::RunError { run_id, message } => {
+                    if !self.is_current_run(run_id) {
+                        continue;
+                    }
+                    self.last_error = Some(message);
+                }
+                RunnerEvent::PackageStarted { run_id, .. } => {
+                    if !self.is_current_run(run_id) {
+                        continue;
+                    }
+                }
             }
-            RunnerEvent::PackageFinished { run_id, .. } => {
-                if !self.is_current_run(run_id) {
-                    return;
-                }
-                self.run_state.packages_done = self.run_state.packages_done.saturating_add(1);
-            }
-            RunnerEvent::RunFinished { run_id, kind } => {
-                if !self.is_current_run(run_id) {
-                    return;
-                }
-                self.run_state.running = false;
-                if kind == RunKind::All {
-                    self.update_failing_set();
-                }
-            }
-            RunnerEvent::TestEvent { run_id, event } => {
-                if !self.is_current_run(run_id) {
-                    return;
-                }
-                self.registry.apply_event(&event);
-                if self.mode == RunMode::Selecting {
-                    self.refresh_selection_filter();
-                }
-            }
-            RunnerEvent::RunError { run_id, message } => {
-                if !self.is_current_run(run_id) {
-                    return;
-                }
-                self.last_error = Some(message);
-            }
-            RunnerEvent::PackageStarted { run_id, .. } => {
-                if !self.is_current_run(run_id) {
-                    return;
-                }
-            }
+        }
+
+        if refresh_failing {
+            self.update_failing_set();
+        }
+        if refresh_selection {
+            self.refresh_selection_filter();
         }
         self.refresh_lists();
     }
 
-    pub fn handle_watch_event(&mut self, event: WatchEvent, runner_tx: &crossbeam_channel::Sender<RunnerCommand>) {
+    pub fn handle_watch_event(
+        &mut self,
+        event: WatchEvent,
+        runner_tx: &crossbeam_channel::Sender<RunnerCommand>,
+    ) {
         match event {
             WatchEvent::FilesChanged(paths) => {
                 if !self.watch_enabled {
@@ -406,7 +429,11 @@ impl App {
             return;
         }
         let index = self.list_state.selected().unwrap_or(0);
-        let new_index = if index == 0 { list.len() - 1 } else { index - 1 };
+        let new_index = if index == 0 {
+            list.len() - 1
+        } else {
+            index - 1
+        };
         self.list_state.select(Some(new_index));
     }
 
@@ -417,7 +444,11 @@ impl App {
             return;
         }
         let index = self.list_state.selected().unwrap_or(0);
-        let new_index = if index + 1 >= list.len() { 0 } else { index + 1 };
+        let new_index = if index + 1 >= list.len() {
+            0
+        } else {
+            index + 1
+        };
         self.list_state.select(Some(new_index));
     }
 
@@ -447,9 +478,11 @@ impl App {
         tests.sort_by(|a, b| {
             let status_a = self.status_rank(a);
             let status_b = self.status_rank(b);
-            status_a
-                .cmp(&status_b)
-                .then_with(|| self.registry.order_index(a).cmp(&self.registry.order_index(b)))
+            status_a.cmp(&status_b).then_with(|| {
+                self.registry
+                    .order_index(a)
+                    .cmp(&self.registry.order_index(b))
+            })
         });
         tests
     }
@@ -523,8 +556,11 @@ impl App {
                 }
             }
             scored.sort_by(|a, b| {
-                b.0.cmp(&a.0)
-                    .then_with(|| self.registry.order_index(&a.1).cmp(&self.registry.order_index(&b.1)))
+                b.0.cmp(&a.0).then_with(|| {
+                    self.registry
+                        .order_index(&a.1)
+                        .cmp(&self.registry.order_index(&b.1))
+                })
             });
             scored.into_iter().map(|(_, test)| test).collect()
         };
@@ -550,9 +586,12 @@ impl App {
             });
         }
     }
- 
+
     fn is_current_run(&self, run_id: u64) -> bool {
-        self.run_state.run_id.map(|current| current == run_id).unwrap_or(true)
+        self.run_state
+            .run_id
+            .map(|current| current == run_id)
+            .unwrap_or(true)
     }
 }
 
@@ -598,12 +637,10 @@ mod tests {
         };
         app.registry.apply_event(&event);
         app.update_failing_set();
-        assert!(app
-            .failing_set
-            .contains(&TestId {
-                package: "example".to_string(),
-                name: "TestFoo".to_string()
-            }));
+        assert!(app.failing_set.contains(&TestId {
+            package: "example".to_string(),
+            name: "TestFoo".to_string()
+        }));
     }
 
     #[test]
@@ -658,9 +695,7 @@ mod tests {
             package: "example".to_string(),
             name: "TestBar".to_string(),
         });
-        let spec = app
-            .spec_for_tests(RunKind::Selected, &tests, None)
-            .unwrap();
+        let spec = app.spec_for_tests(RunKind::Selected, &tests, None).unwrap();
         assert_eq!(spec.packages.len(), 1);
         assert_eq!(spec.packages[0].tests.as_ref().unwrap().len(), 2);
         assert_eq!(spec.packages[0].packages.len(), 1);

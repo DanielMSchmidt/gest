@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -81,13 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         runner_event_tx,
     );
 
-    let app_tx_clone = app_tx.clone();
-    std::thread::spawn(move || {
-        while let Ok(event) = runner_event_rx.recv() {
-            let _ = app_tx_clone.send(AppEvent::Runner(event));
-        }
-    });
-
     if app.watch_enabled {
         let (watch_event_tx, watch_event_rx) = crossbeam_channel::unbounded();
         if let Err(err) = start_watcher(repo_root.clone(), watch_event_tx) {
@@ -120,8 +114,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut should_exit = false;
     let mut dirty = false;
     let mut draw_now = false;
+    let mut pending_runner_events: VecDeque<gest::runner::RunnerEvent> = VecDeque::new();
+    let mut last_runner_flush = Instant::now();
+    let runner_flush_interval = Duration::from_millis(50);
+    let runner_batch_limit = 200usize;
     while !should_exit {
-        match app_rx.recv_timeout(Duration::from_millis(50)) {
+        match app_rx.recv_timeout(Duration::from_millis(30)) {
             Ok(event) => {
                 let outcome = handle_app_event(event, &mut app, &runner_tx);
                 should_exit = should_exit || outcome.should_exit;
@@ -134,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut processed = 0usize;
         let start = std::time::Instant::now();
-        while processed < 500 && start.elapsed() < Duration::from_millis(10) {
+        while processed < 200 && start.elapsed() < Duration::from_millis(10) {
             match app_rx.try_recv() {
                 Ok(event) => {
                     processed += 1;
@@ -154,8 +152,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        let mut runner_processed = 0usize;
+        let start = std::time::Instant::now();
+        while runner_processed < 500 && start.elapsed() < Duration::from_millis(10) {
+            match runner_event_rx.try_recv() {
+                Ok(event) => {
+                    pending_runner_events.push_back(event);
+                    runner_processed += 1;
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => break,
+                Err(crossbeam_channel::TryRecvError::Disconnected) => break,
+            }
+        }
+
         if should_exit {
             break;
+        }
+
+        if !pending_runner_events.is_empty()
+            && (draw_now
+                || last_runner_flush.elapsed() >= runner_flush_interval
+                || pending_runner_events.len() >= runner_batch_limit)
+        {
+            let drain_count = pending_runner_events.len().min(runner_batch_limit);
+            let mut batch = Vec::with_capacity(drain_count);
+            for _ in 0..drain_count {
+                if let Some(event) = pending_runner_events.pop_front() {
+                    batch.push(event);
+                }
+            }
+            app.handle_runner_events(batch);
+            last_runner_flush = Instant::now();
+            dirty = true;
         }
 
         let should_draw = if draw_now {
@@ -216,14 +244,6 @@ fn handle_app_event(
             draw_now: true,
             dirty: true,
         },
-        AppEvent::Runner(event) => {
-            app.handle_runner_event(event);
-            AppEventOutcome {
-                should_exit: false,
-                draw_now: false,
-                dirty: true,
-            }
-        }
         AppEvent::Watch(event) => {
             app.handle_watch_event(event, runner_tx);
             AppEventOutcome {
