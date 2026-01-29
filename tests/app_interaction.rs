@@ -16,6 +16,7 @@ fn build_app(test: &TestId) -> App {
     let cache = CacheState {
         failing: vec![test.clone()],
         selected: Vec::new(),
+        package_cache: None,
     };
     App::new(
         std::path::PathBuf::from("."),

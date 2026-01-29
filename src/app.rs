@@ -93,6 +93,7 @@ impl App {
         CacheState {
             failing: self.failing_set.iter().cloned().collect(),
             selected: self.selected_set.iter().cloned().collect(),
+            package_cache: None,
         }
     }
 

@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde::{Deserialize, Serialize};
 use crate::runner::RunnerError;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PackageInfo {
     pub import_path: String,
     pub dir: PathBuf,
@@ -37,7 +38,7 @@ pub fn ensure_cache_dir(root: &Path) -> Result<PathBuf, RunnerError> {
     Ok(dir)
 }
 
-pub fn list_packages(root: &Path, pattern: Option<&regex::Regex>) -> Result<Vec<PackageInfo>, RunnerError> {
+pub fn list_packages(root: &Path) -> Result<Vec<PackageInfo>, RunnerError> {
     let output = Command::new("go")
         .arg("list")
         .arg("-f")
@@ -61,11 +62,6 @@ pub fn list_packages(root: &Path, pattern: Option<&regex::Regex>) -> Result<Vec<
         if import_path.is_empty() || dir.is_empty() {
             continue;
         }
-        if let Some(regex) = pattern {
-            if !regex.is_match(&import_path) {
-                continue;
-            }
-        }
         packages.push(PackageInfo {
             import_path,
             dir: PathBuf::from(dir),
@@ -73,6 +69,21 @@ pub fn list_packages(root: &Path, pattern: Option<&regex::Regex>) -> Result<Vec<
     }
     packages.sort_by(|a, b| b.dir.as_os_str().len().cmp(&a.dir.as_os_str().len()));
     Ok(packages)
+}
+
+pub fn filter_packages(
+    packages: &[PackageInfo],
+    pattern: Option<&regex::Regex>,
+) -> Vec<PackageInfo> {
+    if let Some(regex) = pattern {
+        packages
+            .iter()
+            .filter(|package| regex.is_match(&package.import_path))
+            .cloned()
+            .collect()
+    } else {
+        packages.to_vec()
+    }
 }
 
 pub fn package_for_path<'a>(packages: &'a [PackageInfo], path: &Path) -> Option<&'a PackageInfo> {
