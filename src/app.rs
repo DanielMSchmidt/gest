@@ -158,11 +158,24 @@ impl App {
                         run_started_at: Some(Instant::now()),
                     };
                 }
-                RunnerEvent::PackageFinished { run_id, .. } => {
+                RunnerEvent::PackageFinished {
+                    run_id,
+                    package,
+                    success,
+                } => {
                     if !self.is_current_run(run_id) {
                         continue;
                     }
                     self.run_state.packages_done = self.run_state.packages_done.saturating_add(1);
+                    if let Some(start) = self.run_state.run_started_at {
+                        let status = if success {
+                            TestStatus::Passed
+                        } else {
+                            TestStatus::Failed
+                        };
+                        self.registry
+                            .finalize_package_tests(&package, status, Some(start));
+                    }
                 }
                 RunnerEvent::RunFinished { run_id, kind } => {
                     if !self.is_current_run(run_id) {
